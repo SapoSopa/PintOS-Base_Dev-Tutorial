@@ -89,6 +89,9 @@ struct thread
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
+    int64_t localtick;                  /* Stores the time to wake up. */ // (for alarm)
+    int nice;                           /* Niceness to other threads in give up CPU time from -20 to 20 */ // (for mlfqs)
+    int32_t recent_cpu;                 /* CPU time recently received in fixed-point 17.14 */ // (for mlfqs)
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
@@ -101,6 +104,9 @@ struct thread
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };
+
+/* The minimum local tick value of the threads. */ // (for alarm)
+extern int64_t min_local_tick;
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
@@ -116,6 +122,9 @@ void thread_print_stats (void);
 typedef void thread_func (void *aux);
 tid_t thread_create (const char *name, int priority, thread_func *, void *);
 
+bool thread_priority_cmp (const struct list_elem *, const struct list_elem *, void *); // (for alarm)
+bool thread_localtick_cmp (const struct list_elem *, const struct list_elem *, void *); // (for alarm)
+
 void thread_block (void);
 void thread_unblock (struct thread *);
 
@@ -126,9 +135,17 @@ const char *thread_name (void);
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);
 
+void thread_sleep (int64_t); // (for alarm)
+void thread_awake (int64_t); // (for alarm)
+
 /* Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func (struct thread *t, void *aux);
 void thread_foreach (thread_action_func *, void *);
+
+void thread_update_recent_cpu (void); // (for mlfqs)
+void thread_update_load_avg (void); // (for mlfqs)
+void thread_set_mlfqs_priority(struct thread *); // (for mlfqs)
+void thread_update_mlfqs_priority (void); // (for mlfqs)
 
 int thread_get_priority (void);
 void thread_set_priority (int);
