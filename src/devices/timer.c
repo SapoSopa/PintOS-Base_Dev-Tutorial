@@ -7,6 +7,7 @@
 #include "threads/interrupt.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
+#include <list.h>
   
 /* See [8254] for hardware details of the 8254 timer chip. */
 
@@ -16,6 +17,9 @@
 #if TIMER_FREQ > 1000
 #error TIMER_FREQ <= 1000 recommended
 #endif
+
+/* Lista de threads dormindo*/
+struct list blocked_threads;
 
 /* Number of timer ticks since OS booted. */
 static int64_t ticks;
@@ -37,6 +41,7 @@ timer_init (void)
 {
   pit_configure_channel (0, 2, TIMER_FREQ);
   intr_register_ext (0x20, timer_interrupt, "8254 Timer");
+  list_init(&blocked_threads);
 }
 
 /* Calibrates loops_per_tick, used to implement brief delays. */
@@ -95,12 +100,21 @@ timer_sleep (int64_t ticks)
   enum intr_level old_level = intr_disable();
   //salva o ponteiro da thread atual
   struct thread *cur = thread_current ();
+
+  //salva o instante em que a thread deverá acordar
+  cur->time_to_wake_up = start + ticks;
+
   thread_block();
   intr_set_level(old_level);
 
+  //Instanciar função de comparação menor que
+  list_less_func *less;
+
+  list_insert_ordered(&blocked_threads, cur, &less, cur->time_to_wake_up);
+
   /* TO DO
-  salvar o tempo em que foi dormir e o tempo pelo qual vai dormir como atributos na thread (tem q criar)
-  salvar a thread q acabou de bloquear numa lista de threads dormindo (fazer sort depois de adicionar)
+  salvar o tempo em que foi dormir e o tempo pelo qual vai dormir como atributos na thread (tem q criar)    OK
+  salvar a thread q acabou de bloquear numa lista de threads dormindo (fazer sort depois de adicionar)      OK
   ja que o timer interrupt ta sempre rodando (VERIFICAR SE TA SEMPRE RODANDO MESMO), dentro dele, verifica
   se alguma thread precisa ser acordada (unblock e break)
   */
@@ -199,6 +213,14 @@ timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
   thread_tick ();
+
+  if(list_empty(&blocked_threads) != 1) {
+    struct thread* top_thread = list_entry(list_front(&blocked_threads), struct thread, blocked_elem);
+    if(top_thread->time_to_wake_up <= timer_ticks()) {
+        list_pop_front(&blocked_threads);
+        thread_unblock(top_thread);
+    }
+  }
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
