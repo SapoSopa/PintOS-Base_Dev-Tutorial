@@ -8,7 +8,8 @@
 #include "threads/synch.h"
 #include "threads/thread.h"
 #include <list.h>
-  
+#include <string.h>  
+
 /* See [8254] for hardware details of the 8254 timer chip. */
 
 #if TIMER_FREQ < 19
@@ -17,6 +18,8 @@
 #if TIMER_FREQ > 1000
 #error TIMER_FREQ <= 1000 recommended
 #endif
+
+#define DEBUG 1
 
 /* Lista de threads dormindo*/
 struct list blocked_threads;
@@ -101,16 +104,26 @@ timer_sleep (int64_t ticks)
   //salva o ponteiro da thread atual
   struct thread *cur = thread_current ();
 
+  if(DEBUG){ 
+    printf("thread atual = %s\n", cur->name);
+  }
+
   //salva o instante em que a thread deverá acordar
   cur->time_to_wake_up = start + ticks;
-
-  thread_block();
-  intr_set_level(old_level);
+  //if(DEBUG) printf("ERRO NO THREAD BLOCK\n");
 
   //Instanciar função de comparação menor que
   list_less_func *less;
 
   list_insert_ordered(&blocked_threads, cur, &less, cur->time_to_wake_up);
+  if(DEBUG) printf("inseriu thread %s na lista\n", cur->name);
+
+  thread_block();
+  //LEMBRAR DE PASSAR O OLD LEVEL (INTERRUPTION) PRA VOLTAR PRO ESTADO ANTIGO NO SCHEDULER ###############################3
+
+  if(DEBUG) printf("estado da thread %s: %s\n", cur->name, cur->status);
+
+  intr_set_level(old_level);
 
   /* TO DO
   salvar o tempo em que foi dormir e o tempo pelo qual vai dormir como atributos na thread (tem q criar)    OK
@@ -219,8 +232,10 @@ timer_interrupt (struct intr_frame *args UNUSED)
     if(top_thread->time_to_wake_up <= timer_ticks()) {
         list_pop_front(&blocked_threads);
         thread_unblock(top_thread);
+        if(DEBUG) printf("thread %s desbloqueada\n", top_thread->name);
     }
   }
+    
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
