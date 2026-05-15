@@ -7,8 +7,6 @@
 #include "threads/interrupt.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
-#include <list.h>
-#include <string.h>  
 
 /* See [8254] for hardware details of the 8254 timer chip. */
 
@@ -18,8 +16,6 @@
 #if TIMER_FREQ > 1000
 #error TIMER_FREQ <= 1000 recommended
 #endif
-
-#define DEBUG 1
 
 /* Number of timer ticks since OS booted. */
 static int64_t ticks;
