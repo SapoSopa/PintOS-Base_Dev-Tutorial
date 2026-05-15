@@ -15,6 +15,8 @@
 #include "userprog/process.h"
 #endif
 
+#define DEBUG 1
+
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
    of thread.h for details. */
@@ -24,6 +26,9 @@
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
+
+/* Lista de threads dormindo*/
+static struct list blocked_list;
 
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
@@ -71,6 +76,10 @@ static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
+//função menor que pra ordenar a lista de threads bloqueadas
+static bool wakeup_less (const struct list_elem *a,
+                         const struct list_elem *b,
+                         void *aux UNUSED);
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -86,6 +95,60 @@ static tid_t allocate_tid (void);
    It is not safe to call thread_current() until this function
    finishes. */
 void
+thread_sleep(int64_t time_to_wakeup){
+
+  //interrupções devem estar desligadas pra chamar o thread_block
+  enum intr_level old_level = intr_disable();
+
+  //salva o ponteiro da thread atual
+  struct thread *cur = thread_current ();
+
+  //salva o instante em que a thread deverá acordar
+  cur->time_to_wake_up = time_to_wakeup;
+
+  list_insert_ordered(&blocked_list, &cur->blocked_elem, wakeup_less, NULL);
+
+  thread_block();
+  
+  intr_set_level(old_level);
+}
+
+static bool
+wakeup_less (const struct list_elem *a,
+             const struct list_elem *b,
+             void *aux UNUSED)
+{
+  const struct thread *ta = list_entry(a, struct thread, blocked_elem);
+  const struct thread *tb = list_entry(b, struct thread, blocked_elem);
+  return ta->time_to_wake_up < tb->time_to_wake_up;
+}
+
+void 
+thread_wakeup()
+{
+  while (!list_empty(&blocked_list)) {
+    struct thread* top_thread =
+      list_entry(list_front(&blocked_list), struct thread, blocked_elem);
+
+    if (top_thread->time_to_wake_up > timer_ticks())
+      break;
+
+    list_pop_front(&blocked_list);
+    thread_unblock(top_thread);
+  }
+    /*
+    if(list_empty(&blocked_list) != 1) {
+    struct thread* top_thread = list_entry(list_front(&blocked_list), struct thread, blocked_elem);
+
+    if(top_thread->time_to_wake_up <= timer_ticks()) {
+        list_pop_front(&blocked_list);
+        thread_unblock(top_thread);
+    }
+  }
+    */
+}
+
+void
 thread_init (void) 
 {
   ASSERT (intr_get_level () == INTR_OFF);
@@ -93,6 +156,7 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
+  list_init(&blocked_list);
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();

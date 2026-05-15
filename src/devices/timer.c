@@ -21,9 +21,6 @@
 
 #define DEBUG 1
 
-/* Lista de threads dormindo*/
-struct list blocked_threads;
-
 /* Number of timer ticks since OS booted. */
 static int64_t ticks;
 
@@ -44,7 +41,6 @@ timer_init (void)
 {
   pit_configure_channel (0, 2, TIMER_FREQ);
   intr_register_ext (0x20, timer_interrupt, "8254 Timer");
-  list_init(&blocked_threads);
 }
 
 /* Calibrates loops_per_tick, used to implement brief delays. */
@@ -99,31 +95,7 @@ timer_sleep (int64_t ticks)
 {
   int64_t start = timer_ticks ();
 
-  //interrupções devem estar desligadas pra chamar o thread_block
-  enum intr_level old_level = intr_disable();
-  //salva o ponteiro da thread atual
-  struct thread *cur = thread_current ();
-
-  if(DEBUG){ 
-    printf("thread atual = %s\n", cur->name);
-  }
-
-  //salva o instante em que a thread deverá acordar
-  cur->time_to_wake_up = start + ticks;
-  //if(DEBUG) printf("ERRO NO THREAD BLOCK\n");
-
-  //Instanciar função de comparação menor que
-  list_less_func *less;
-
-  list_insert_ordered(&blocked_threads, cur, &less, cur->time_to_wake_up);
-  if(DEBUG) printf("inseriu thread %s na lista\n", cur->name);
-
-  thread_block();
-  //LEMBRAR DE PASSAR O OLD LEVEL (INTERRUPTION) PRA VOLTAR PRO ESTADO ANTIGO NO SCHEDULER ###############################3
-
-  if(DEBUG) printf("estado da thread %s: %s\n", cur->name, cur->status);
-
-  intr_set_level(old_level);
+  thread_sleep(start + ticks);
 
   /* TO DO
   salvar o tempo em que foi dormir e o tempo pelo qual vai dormir como atributos na thread (tem q criar)    OK
@@ -227,15 +199,7 @@ timer_interrupt (struct intr_frame *args UNUSED)
   ticks++;
   thread_tick ();
 
-  if(list_empty(&blocked_threads) != 1) {
-    struct thread* top_thread = list_entry(list_front(&blocked_threads), struct thread, blocked_elem);
-    if(top_thread->time_to_wake_up <= timer_ticks()) {
-        list_pop_front(&blocked_threads);
-        thread_unblock(top_thread);
-        if(DEBUG) printf("thread %s desbloqueada\n", top_thread->name);
-    }
-  }
-    
+  thread_wakeup();
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
