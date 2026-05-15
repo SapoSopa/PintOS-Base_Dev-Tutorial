@@ -95,31 +95,7 @@ timer_sleep (int64_t ticks)
 {
   int64_t start = timer_ticks ();
 
-  thread_sleep(start + ticks);
-
-  /* TO DO
-  salvar o tempo em que foi dormir e o tempo pelo qual vai dormir como atributos na thread (tem q criar)    OK
-  salvar a thread q acabou de bloquear numa lista de threads dormindo (fazer sort depois de adicionar)      OK
-  ja que o timer interrupt ta sempre rodando (VERIFICAR SE TA SEMPRE RODANDO MESMO), dentro dele, verifica
-  se alguma thread precisa ser acordada (unblock e break)
-  */
-
-  /*
-  while(1){
-    if(timer_elapsed(start) >= ticks){
-      //quando o tempo passar, desbloqueia a thread
-      thread_unblock(cur);
-    }
-  }
-  
-  while (timer_elapsed (start) < ticks) 
-    thread_yield ();
-
-    thread yield bota a thread rodando em estado pronto. Nada impede o escalonador de ficar
-    tentando botar a thread pra rodar dnv. thread quer parar, escalonador quer que ela rode. 
-    dar um jeito de bloquear a thread e fazer com que o escalonador apenas consiga mexer nela quando
-    ela for desblloqueada.
-  */
+  thread_sleep(start + ticks); //insere thread na lista de threads bloqueadas até o tempo start + ticks
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -199,7 +175,7 @@ timer_interrupt (struct intr_frame *args UNUSED)
   ticks++;
   thread_tick ();
 
-  thread_wakeup();
+  thread_wakeup(); //verifica se há alguma thread dormindo que precisa ser acordada
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

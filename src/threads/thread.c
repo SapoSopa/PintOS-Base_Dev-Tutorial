@@ -106,10 +106,11 @@ thread_sleep(int64_t time_to_wakeup){
   //salva o instante em que a thread deverá acordar
   cur->time_to_wake_up = time_to_wakeup;
 
+  //insere na lista e ordena baseado no time_to_wake_up (e na prioridade, se necessário)
   list_insert_ordered(&blocked_list, &cur->blocked_elem, wakeup_less, NULL);
 
   thread_block();
-  
+
   intr_set_level(old_level);
 }
 
@@ -120,32 +121,27 @@ wakeup_less (const struct list_elem *a,
 {
   const struct thread *ta = list_entry(a, struct thread, blocked_elem);
   const struct thread *tb = list_entry(b, struct thread, blocked_elem);
-  return ta->time_to_wake_up < tb->time_to_wake_up;
+  return (ta->time_to_wake_up < tb->time_to_wake_up) ? 1 : ((ta->time_to_wake_up == tb->time_to_wake_up) ? ((ta->priority > tb->priority) ? 1 : 0) : 0);
+  // verificar quem tem o menor time_to_wake_up. Caso sejam iguais, verifica quem tem a maior pioridade.
 }
 
 void 
 thread_wakeup()
 {
+  //itera pela lista de threads bloqueadas verificando se é tempo de acordar alguma
   while (!list_empty(&blocked_list)) {
+    //pega a primeira thread da lista
     struct thread* top_thread =
       list_entry(list_front(&blocked_list), struct thread, blocked_elem);
 
+    //se não tiver dado o tempo ainda, break. No próximo tick, timer interrupt chama essa função e verifica novamente
     if (top_thread->time_to_wake_up > timer_ticks())
       break;
 
+    //se chegou aqui, significa que deu o tempo de acordar a primeira thread. Tira ela da lista e da unblock nela  
     list_pop_front(&blocked_list);
     thread_unblock(top_thread);
   }
-    /*
-    if(list_empty(&blocked_list) != 1) {
-    struct thread* top_thread = list_entry(list_front(&blocked_list), struct thread, blocked_elem);
-
-    if(top_thread->time_to_wake_up <= timer_ticks()) {
-        list_pop_front(&blocked_list);
-        thread_unblock(top_thread);
-    }
-  }
-    */
 }
 
 void
@@ -622,11 +618,6 @@ schedule (void)
   struct thread *prev = NULL;
 
   ASSERT (intr_get_level () == INTR_OFF);
-  /* TODO:
-   * Ver de usar o thread_block, mas para o schedule 
-   * tem de verificar se uma thread esta bloqueada, alem de implementar 
-   * o unblock com o tempo
-   * */
   ASSERT (cur->status != THREAD_RUNNING);
   ASSERT (is_thread (next));
 
