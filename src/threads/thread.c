@@ -15,8 +15,6 @@
 #include "userprog/process.h"
 #endif
 
-#define DEBUG 1
-
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
    of thread.h for details. */
@@ -81,23 +79,10 @@ static bool wakeup_less (const struct list_elem *a,
                          const struct list_elem *b,
                          void *aux UNUSED);
 
-/* Initializes the threading system by transforming the code
-   that's currently running into a thread.  This can't work in
-   general and it is possible in this case only because loader.S
-   was careful to put the bottom of the stack at a page boundary.
-
-   Also initializes the run queue and the tid lock.
-
-   After calling this function, be sure to initialize the page
-   allocator before trying to create any threads with
-   thread_create().
-
-   It is not safe to call thread_current() until this function
-   finishes. */
 void
 thread_sleep(int64_t time_to_wakeup){
 
-  //interrupções devem estar desligadas pra chamar o thread_block
+  //interrupções devem estar desligadas pra chamar o thread_block, também salva o estado anterior das interrupções
   enum intr_level old_level = intr_disable();
 
   //salva o ponteiro da thread atual
@@ -111,6 +96,7 @@ thread_sleep(int64_t time_to_wakeup){
 
   thread_block();
 
+  //retorna as interrupções ao estado anterior
   intr_set_level(old_level);
 }
 
@@ -144,6 +130,19 @@ thread_wakeup()
   }
 }
 
+/* Initializes the threading system by transforming the code
+   that's currently running into a thread.  This can't work in
+   general and it is possible in this case only because loader.S
+   was careful to put the bottom of the stack at a page boundary.
+
+   Also initializes the run queue and the tid lock.
+
+   After calling this function, be sure to initialize the page
+   allocator before trying to create any threads with
+   thread_create().
+
+   It is not safe to call thread_current() until this function
+   finishes. */
 void
 thread_init (void) 
 {
@@ -152,7 +151,7 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
-  list_init(&blocked_list);
+  list_init(&blocked_list); //inicia a lista de threads bloqueadas que criamos
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
