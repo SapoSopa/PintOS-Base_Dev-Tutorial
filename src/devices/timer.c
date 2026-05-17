@@ -19,6 +19,7 @@
 
 /* Number of timer ticks since OS booted. */
 static int64_t ticks;
+static struct list sleep_list; /* <--- Lista global para threads dormindo */
 
 /* Number of loops per timer tick.
    Initialized by timer_calibrate(). */
@@ -37,6 +38,28 @@ timer_init (void)
 {
   pit_configure_channel (0, 2, TIMER_FREQ);
   intr_register_ext (0x20, timer_interrupt, "8254 Timer");
+
+  /* INITIALIZE SUA LISTA AQUI! */
+  list_init (&sleep_list);
+}
+
+/* Compara threads para ordenar a sleep_list. 
+   Quem acorda antes fica na frente. Se acordarem no mesmo tick, 
+   quem tiver MAIOR prioridade fica na frente. */
+static bool
+timer_compare_priority (const struct list_elem *a,
+                        const struct list_elem *b,
+                        void *aux UNUSED)
+{
+  struct thread *ta = list_entry (a, struct thread, elem);
+  struct thread *tb = list_entry (b, struct thread, elem);
+
+  if (ta->sleep_ticks != tb->sleep_ticks) 
+    {
+      return ta->sleep_ticks < tb->sleep_ticks; // Menor tick (mais cedo) primeiro
+    }
+  
+  return ta->priority > tb->priority; // Em caso de empate no tempo, maior prioridade primeiro
 }
 
 /* Calibrates loops_per_tick, used to implement brief delays. */
@@ -89,11 +112,30 @@ timer_elapsed (int64_t then)
 void
 timer_sleep (int64_t ticks) 
 {
-  int64_t start = timer_ticks ();
+  /* Se o tempo pedido for zero ou negativo, não faz sentido dormir */
+  if (ticks <= 0) 
+    return;
 
-  ASSERT (intr_get_level () == INTR_ON);
-  while (timer_elapsed (start) < ticks) 
-    thread_yield ();
+  int64_t start = timer_ticks ();
+  struct thread *current = thread_current ();
+
+  /* 1. Calcula e guarda na struct o tick exato do despertador */
+  current->sleep_ticks = start + ticks;
+
+  /* 2. Desabilita as interrupções de hardware antes de mexer na lista global.
+        Isso funciona como o nosso "lock/mutex" para evitar condições de corrida. */
+  enum intr_level old_level = intr_disable ();
+
+  /* 3. Insere a thread atual na nossa lista de bloqueados por tempo */
+ list_insert_ordered (&sleep_list, &current->elem, timer_compare_priority, NULL);
+  /* 4. BLOQUEIA A THREAD. 
+        Essa função muda o status para THREAD_BLOCKED, retira a thread da ready_list 
+        e chama o escalonador para dar a CPU para outra thread útil. */
+  thread_block ();
+
+  /* 5. Ao acordar (quando outra função chamar thread_unblock), 
+        o código retoma exatamente daqui e religa as interrupções. */
+  intr_set_level (old_level);
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -168,10 +210,34 @@ timer_print_stats (void)
 
 /* Timer interrupt handler. */
 static void
-timer_interrupt (struct intr_frame *args UNUSED)
+timer_interrupt (struct intr_frame *args UNUSED) 
 {
   ticks++;
   thread_tick ();
+
+  /* --- VERIFICAÇÃO DA LISTA DE BLOQUEADOS --- */
+  struct list_elem *e = list_begin (&sleep_list);
+
+  while (e != list_end (&sleep_list)) 
+    {
+      /* Obtém a estrutura da thread a partir do elemento da lista */
+      struct thread *t = list_entry (e, struct thread, elem);
+
+      /* Se o tick atual do kernel já passou ou atingiu o tick de despertar... */
+      if (ticks >= t->sleep_ticks) 
+        {
+          /* list_remove remove o elemento atual e JÁ RETORNA o ponteiro para o próximo */
+          e = list_remove (e); 
+          
+          /* Acorda a thread: muda o estado para READY e joga na ready_list */
+          thread_unblock (t);  
+        }
+      else 
+        {
+          /* Se não for a hora dessa thread acordar, apenas avança para a próxima */
+          e = list_next (e);   
+        }
+    }
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
