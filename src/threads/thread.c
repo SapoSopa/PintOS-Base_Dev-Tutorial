@@ -15,8 +15,6 @@
 #include "userprog/process.h"
 #endif
 
-#define DEBUG 1
-
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
    of thread.h for details. */
@@ -97,7 +95,7 @@ static bool wakeup_less (const struct list_elem *a,
 void
 thread_sleep(int64_t time_to_wakeup){
 
-  //interrupções devem estar desligadas pra chamar o thread_block
+  //interrupções devem estar desligadas pra chamar o thread_block, também salva o estado anterior das interrupções
   enum intr_level old_level = intr_disable();
 
   //salva o ponteiro da thread atual
@@ -111,6 +109,7 @@ thread_sleep(int64_t time_to_wakeup){
 
   thread_block();
 
+  //retorna as interrupções ao estado anterior
   intr_set_level(old_level);
 }
 
@@ -152,7 +151,7 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
-  list_init(&blocked_list);
+  list_init(&blocked_list); //inicia a lista de threads bloqueadas que criamos
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
