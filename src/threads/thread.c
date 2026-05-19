@@ -29,6 +29,9 @@ static struct list ready_list;
    when they are first scheduled and removed when they exit. */
 static struct list all_list;
 
+/* Lisf of processes in THEREAD_SLEEP state */
+static struct list sleep_list;
+
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -93,6 +96,7 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
+  list_init (&sleep_list);
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -315,6 +319,43 @@ thread_yield (void)
   intr_set_level (old_level);
 }
 
+/* Thread Sleep places the current thread in the sleep_list, 
+   updating its state to BLOCKED and updating its sleep_ticks. */
+void thread_sleep(uint64_t sleep_ticks){
+  struct thread *cur = thread_current ();
+  enum intr_level old_level;
+  
+  ASSERT (!intr_context ());
+  
+  cur->sleep_ticks = sleep_ticks;
+
+  old_level = intr_disable ();
+  if (cur != idle_thread) 
+    list_push_back (&sleep_list, &cur->elem);
+  cur->status = THREAD_BLOCKED;
+  schedule ();
+  intr_set_level (old_level);
+}
+
+/* It iterates through the sleep_list, decrementing the 
+  sleep_ticks attribute, and threads that reach zero are
+  moved from sleep_list -> ready_list. */
+void threads_wakeup(){
+  struct list_elem *e;
+
+  ASSERT (intr_get_level () == INTR_OFF);
+
+  for(e = list_begin(&sleep_list); e != list_end(&sleep_list); e = list_next(e)){
+    struct thread *t = list_entry(e, struct thread, elem);
+    t->sleep_ticks--;
+    if(t->sleep_ticks <= 0){
+      list_remove(&t->elem);
+      list_push_back(&ready_list, &t->elem);
+      t->status = THREAD_READY;
+    }
+  }
+
+}
 /* Invoke function 'func' on all threads, passing along 'aux'.
    This function must be called with interrupts off. */
 void
@@ -425,7 +466,7 @@ kernel_thread (thread_func *function, void *aux)
   function (aux);       /* Execute the thread function. */
   thread_exit ();       /* If function() returns, kill the thread. */
 }
-
+
 /* Returns the running thread. */
 struct thread *
 running_thread (void) 
