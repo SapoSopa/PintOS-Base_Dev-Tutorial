@@ -37,6 +37,8 @@ static struct thread *initial_thread;
 
 /* Lock used by allocate_tid(). */
 static struct lock tid_lock;
+/* */
+static int load_avg;
 
 /* Stack frame for kernel_thread(). */
 struct kernel_thread_frame 
@@ -93,6 +95,8 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
+
+  load_avg = int_to_fp(0);
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -464,6 +468,18 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
+
+  if (t == initial_thread) 
+    {
+      t->nice = 0;
+      t->recent_cpu = int_to_fp(0);
+    } 
+    
+  else 
+    {
+      t->nice = thread_current()->nice;
+      t->recent_cpu = thread_current()->recent_cpu;
+    }
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
