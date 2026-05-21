@@ -89,7 +89,8 @@ struct thread
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
-
+    struct list_elem sleep_elem;        /* List element para a lista bloqueada */
+    int64_t wake_up_tick;               /* O tempo que a thread deve estar dormindo*/
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
@@ -106,7 +107,8 @@ struct thread
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 extern bool thread_mlfqs;
-
+void thread_sleep (int64_t wake_up_time);
+void thread_wake_up (int64_t ticks);
 void thread_init (void);
 void thread_start (void);
 

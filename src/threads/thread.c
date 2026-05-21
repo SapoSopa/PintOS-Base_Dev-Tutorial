@@ -25,6 +25,9 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 
+/* Lista das Threads bloqueadas */
+static struct list sleep_list;
+
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
 static struct list all_list;
@@ -72,6 +75,68 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
+
+bool wake_up_order(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
+{
+  struct thread *thread_a = list_entry(a, struct thread, sleep_elem); 
+  struct thread *thread_b = list_entry(b, struct thread, sleep_elem);
+  
+  if (thread_a->wake_up_tick == thread_b->wake_up_tick) 
+  {
+    // Se o tempo for igual, desempata pela maior prioridade
+    return thread_a->priority > thread_b->priority;
+  }
+  
+  // Caso contrário, quem tem o menor tempo vem na frente
+  return thread_a->wake_up_tick < thread_b->wake_up_tick;
+}
+
+
+/* 
+    Coloca a Thread pra dormir pelo tempo determinado
+    */
+void thread_sleep (int64_t wake_up_tick)
+{
+  //pego o estado de interrupição atual
+  enum intr_level old_level;
+
+  //disabilito interrupção
+  old_level = intr_disable ();
+
+  //pego a thread atual 
+  struct thread *t = thread_current ();
+  
+  //adiciono o tempo que a thread precisa
+  t->wake_up_tick = wake_up_tick;
+
+  //adicono a thread na lista de thread bloqueadas
+  list_insert_ordered (&sleep_list, &t->sleep_elem, wake_up_order, NULL);
+
+  //bloqueio a thread
+  thread_block();
+
+  //volto para a interrupção que estava anteriormente
+  intr_set_level (old_level);
+}
+
+
+
+void thread_wake_up (int64_t ticks)
+{
+  while (!list_empty(&sleep_list))
+  {
+    struct thread *t = list_entry(list_begin(&sleep_list), struct thread, sleep_elem);
+    if (t->wake_up_tick > ticks)
+    {
+      break; 
+    }
+    list_pop_front(&sleep_list);
+    thread_unblock(t);
+  }
+  
+}
+
+
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -92,6 +157,7 @@ thread_init (void)
 
   lock_init (&tid_lock);
   list_init (&ready_list);
+  list_init (&sleep_list);
   list_init (&all_list);
 
   /* Set up a thread structure for the running thread. */
