@@ -56,7 +56,13 @@ is_tail (struct list_elem *elem)
   return elem != NULL && elem->prev != NULL && elem->next == NULL;
 }
 
-/* Initializes LIST as an empty list. */
+/* INICIALIZAR UMA LISTA VAZIA!
+  essa função cria a estrutura head <-> list pra cada lista
+  o lixo de memória vira uma lista com a estrutura necessária:
+    *prepara a cabeça da lista;
+    *prepara a cauda da lista; 
+    *prepara os ponteiross internos. 
+*/
 void
 list_init (struct list *list)
 {
@@ -67,7 +73,10 @@ list_init (struct list *list)
   list->tail.next = NULL;
 }
 
-/* Returns the beginning of LIST.  */
+/* RETORNA O PRIMEIRO ELEMENTO DA LISTA  
+  após o cabeçalho, retorna o primeiro elemento real da lista
+
+*/
 struct list_elem *
 list_begin (struct list *list)
 {
@@ -75,7 +84,9 @@ list_begin (struct list *list)
   return list->head.next;
 }
 
-/* Returns the element after ELEM in its list.  If ELEM is the
+/* PRÓXIMO elemento da lista -> retorna o elemento seguinte
+  dá erro se o elemento for a cauda, já que o próximo é nulo. 
+Returns the element after ELEM in its list.  If ELEM is the
    last element in its list, returns the list tail.  Results are
    undefined if ELEM is itself a list tail. */
 struct list_elem *
@@ -85,7 +96,7 @@ list_next (struct list_elem *elem)
   return elem->next;
 }
 
-/* Returns LIST's tail.
+/* retorna TAIL
 
    list_end() is often used in iterating through a list from
    front to back.  See the big comment at the top of list.h for
@@ -162,16 +173,34 @@ list_tail (struct list *list)
   return &list->tail;
 }
 
-/* Inserts ELEM just before BEFORE, which may be either an
-   interior element or a tail.  The latter case is equivalent to
-   list_push_back(). */
+/* INSERE ELEM antes de before
+  supondo head <-> A <-> B <-> tail, para inserir X antes de B, 
+  4 ponteiros ajustados
+  before é um ponteiro para um list_elem que já está numa lista (ou o tail)
+    before indica a posição onde se deseja inserir o novo elemento 
+    considerando-se que o elemento virá antes de before. 
+  
+  before = B e elem = X
+  antes da inserção, os ponteiros são 
+  pra A:
+  prev -> head
+  next -> B
+  pra B:
+  prev -> A 
+  next -> tail
+
+  como before = B, before->prev = A
+  assim, ao inserir X, teremos elem->prev = A (before->prev)
+  e elem->next igual ao B (before)
+  before->prev->next = A->next = x (elem)
+*/
 void
-list_insert (struct list_elem *before, struct list_elem *elem)
+list_insert (struct list_elem *before, struct list_elem *elem) //recebe um ponteiro e uma lista
 {
   ASSERT (is_interior (before) || is_tail (before));
   ASSERT (elem != NULL);
 
-  elem->prev = before->prev;
+  elem->prev = before->prev; 
   elem->next = before;
   before->prev->next = elem;
   before->prev = elem;
