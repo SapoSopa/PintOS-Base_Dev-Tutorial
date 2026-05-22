@@ -41,6 +41,9 @@ static struct thread *initial_thread;
 /* Lock used by allocate_tid(). */
 static struct lock tid_lock;
 
+/*declaração do load_avg*/
+static fixed_point load_avg;
+
 /* Stack frame for kernel_thread(). */
 struct kernel_thread_frame 
   {
@@ -165,6 +168,7 @@ thread_init (void)
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
+  load_avg = 0;
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -264,6 +268,10 @@ thread_create (const char *name, int priority,
   sf = alloc_frame (t, sizeof *sf);
   sf->eip = switch_entry;
   sf->ebp = 0;
+
+  /*inicialização do nice e recent_cpu - ambos começam zerados*/
+  t->nice = 0;
+  t->recent_cpu = 0;
 
   /* Add to run queue. */
   thread_unblock (t);
@@ -414,35 +422,62 @@ thread_get_priority (void)
 
 /* Sets the current thread's nice value to NICE. */
 void
-thread_set_nice (int nice UNUSED) 
-{
-  /* Not yet implemented. */
+thread_set_nice (int nice) 
+{ 
+  thread_current()->nice = nice;  /*seta a thread atual e atualiza o nice*/
+  mlfqs_recalc_priority(thread_current(), NULL);
 }
 
 /* Returns the current thread's nice value. */
 int
 thread_get_nice (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  return thread_current()->nice;
 }
 
 /* Returns 100 times the system load average. */
 int
 thread_get_load_avg (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  return FP_INT_ROUND(FP_MUL_INT(load_avg,100));
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  return FP_INT_ROUND(FP_MUL_INT(thread_current()->recent_cpu,100));
 }
 
+/*criação das funções mlfqs para realização dos calculos e atualizações por clock*/
+void mlfqs_increment_recent_cpu()
+{
+  thread_current()->recent_cpu = FP_ADD_INT(thread_current()->recent_cpu,1);
+}
+
+void mlfqs_recalc_priority(struct thread *t, void* aux UNUSED)
+{
+  t->priority = FP_INT_ROUND(FP_SUB_INT(FP_SUB_INT(INT_FP(PRI_MAX),FP_DIV_INT(t->recent_cpu,4)),((t->nice)*2)));
+  /*manter a prioridade no limite exigido do PintOS*/
+  if (t->priority > PRI_MAX) t->priority = PRI_MAX;
+  if (t->priority < PRI_MIN) t->priority = PRI_MIN;
+}
+
+void mlfqs_recalc_load_avg()
+{
+  int ready_threads = list_size(&ready_list) + (thread_current()!=idle_thread ? 1:0);
+  load_avg = FP_ADD(FP_MUL(FP_DIV_INT(INT_FP(59), 60),load_avg),FP_MUL_INT(FP_DIV_INT(INT_FP(1), 60),ready_threads));
+}
+
+void recalc_recent_cpu(struct thread *t, void *aux UNUSED)
+{
+  t->recent_cpu = FP_ADD_INT(FP_MUL(FP_DIV(FP_MUL_INT(load_avg,2),FP_ADD_INT(FP_MUL_INT(load_avg,2),1)),t->recent_cpu),t->nice);
+}
+
+void mlfqs_recalc_all_recent_cpu()
+{
+  thread_foreach(recalc_recent_cpu, NULL); //thread_foreach faz um for para percorrer cada thread
+}
 /* Idle thread.  Executes when no other thread is ready to run.
 
    The idle thread is initially put on the ready list by
