@@ -6,7 +6,12 @@
 #include <stdint.h>
 #include "threads/fixed_point.h"
 
-/* States in a thread's life cycle. */
+/* estados possíveis de uma thread 
+   RUNNING -> thread sendo executada na cpu
+   READY -> pronto pra executar (a espera da cpu)
+   BLOCKED -> bloqueada, esperando um recurso/evento pra poder ficar PRONTA
+   DYING -> vai ser destruída (já foi executada)
+   */
 enum thread_status
   {
     THREAD_RUNNING,     /* Running thread. */
@@ -15,23 +20,20 @@ enum thread_status
     THREAD_DYING        /* About to be destroyed. */
   };
 
-/* Thread identifier type.
-   You can redefine this to whatever type you like. */
+/* identificador da thread  */
 typedef int tid_t;
 #define TID_ERROR ((tid_t) -1)          /* Error value for tid_t. */
 
-/* Thread priorities. */
+/* definição de prioridades, normalmente, 
+   o valor da prioridade de um programa determina 
+   sua execução antes de outro  */
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
 
-/* A kernel thread or user process.
-
-   Each thread structure is stored in its own 4 kB page.  The
-   thread structure itself sits at the very bottom of the page
-   (at offset 0).  The rest of the page is reserved for the
-   thread's kernel stack, which grows downward from the top of
-   the page (at offset 4 kB).  Here's an illustration:
+/* cada thread ocua uma página de 4 kB, 
+   a thread se estrutura no começo da página (offset 0), 
+   enquanto a pilha da thread fica acima e vai crescendo seu tamanho 
 
         4 kB +---------------------------------+
              |          kernel stack           |
@@ -81,23 +83,28 @@ typedef int tid_t;
    only because they are mutually exclusive: only a thread in the
    ready state is on the run queue, whereas only a thread in the
    blocked state is on a semaphore wait list. */
+
+/* a estrutura da thread guarda todas as informações importantes de uma thread 
+*/
+
 struct thread
   {
-    /* Owned by thread.c. */
-    tid_t tid;                          /* Thread identifier. */
-    enum thread_status status;          /* Thread state. */
+    /* struct usada em thread.c */
+    tid_t tid;                          /* id da thread é único dela */
+    enum thread_status status;          /* status da thread (RUNNING, READY, BLOCKED ou DYING) */
     char name[16];                      /* Name (for debugging purposes). */
-    uint8_t *stack;                     /* Saved stack pointer. */
-    int priority;                       /* Priority. */
-    int nice;                           /*valor de "gentileza" da thread*/
-    fixed_point recent_cpu;             /*tempo de CPU usado recentemente pela thread*/
-    struct list_elem allelem;           /* List element for all threads list. */
-    struct list_elem sleep_elem;        /* List element para a lista bloqueada */
-    int64_t wake_up_tick;               /* O tempo que a thread deve estar dormindo*/
+    uint8_t *stack;                     /* ponteiro pro topo da stack */
+    int priority;                       /* prioridade de 0 a 63. */
+    int nice;           // valor de "gentileza" da thread
+    fixed_point recent_cpu;   //tempo da cpu usado recentemente pela thread
+    struct list_elem allelem;           /* elemento pra lista de todas as threads */
+    struct list_elem sleep_elem;    // elemento para a lista de threads dormindo (bloqueadas)
+    int64_t wake_up_tick;   // tempo q a thread vai ficar dormindo
+    
     /* Shared between thread.c and synch.c. */
-    struct list_elem elem;              /* List element. */
+    struct list_elem elem;              /* para a ready_list ou a fila de semáforo. */
 
-#ifdef USERPROG
+#ifdef USERPROG 
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
 #endif
@@ -110,9 +117,12 @@ struct thread
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 extern bool thread_mlfqs;
+
 void thread_mlfqs_yield(void);
+
 void thread_sleep (int64_t wake_up_time);
 void thread_wake_up (int64_t ticks);
+
 void thread_init (void);
 void thread_start (void);
 
@@ -150,5 +160,6 @@ void mlfqs_recalc_load_avg(void);
 void recalc_recent_cpu(struct thread *t, void *aux);
 void mlfqs_recalc_all_recent_cpu(void);
 void mlfqs_sort_ready_list(void);
+
 
 #endif /* threads/thread.h */
