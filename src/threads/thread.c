@@ -44,6 +44,9 @@ static struct lock tid_lock;
 /*declaração do load_avg*/
 static fixed_point load_avg;
 
+/*Função para organizar threads por prioridade*/
+static bool insert_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+
 /* Stack frame for kernel_thread(). */
 struct kernel_thread_frame 
   {
@@ -269,9 +272,9 @@ thread_create (const char *name, int priority,
   sf->eip = switch_entry;
   sf->ebp = 0;
 
-  /*inicialização do nice e recent_cpu - ambos começam zerados*/
-  t->nice = 0;
-  t->recent_cpu = 0;
+  /*inicialização do nice e recent_cpu - ambos herdam valor*/
+  t->nice = thread_current()->nice;
+t->recent_cpu = thread_current()->recent_cpu;
 
   /* Add to run queue. */
   thread_unblock (t);
@@ -312,7 +315,8 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+  //list_push_back (&ready_list, &t->elem);
+  list_insert_ordered(&ready_list, &t->elem, insert_priority, NULL);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -383,7 +387,8 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
+    //list_push_back (&ready_list, &cur->elem);
+    list_insert_ordered(&ready_list, &cur->elem, insert_priority, NULL);
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -452,12 +457,13 @@ thread_get_recent_cpu (void)
 /*criação das funções mlfqs para realização dos calculos e atualizações por clock*/
 void mlfqs_increment_recent_cpu()
 {
-  thread_current()->recent_cpu = FP_ADD_INT(thread_current()->recent_cpu,1);
+  if (thread_current() != idle_thread) /*checa tem thread em execuçaõ*/
+        thread_current()->recent_cpu = FP_ADD_INT(thread_current()->recent_cpu, 1);
 }
 
 void mlfqs_recalc_priority(struct thread *t, void* aux UNUSED)
 {
-  t->priority = FP_INT_ROUND(FP_SUB_INT(FP_SUB_INT(INT_FP(PRI_MAX),FP_DIV_INT(t->recent_cpu,4)),((t->nice)*2)));
+  t->priority = FP_INT(FP_SUB_INT(FP_SUB_INT(INT_FP(PRI_MAX),FP_DIV_INT(t->recent_cpu,4)),((t->nice)*2)));
   /*manter a prioridade no limite exigido do PintOS*/
   if (t->priority > PRI_MAX) t->priority = PRI_MAX;
   if (t->priority < PRI_MIN) t->priority = PRI_MIN;
@@ -478,6 +484,29 @@ void mlfqs_recalc_all_recent_cpu()
 {
   thread_foreach(recalc_recent_cpu, NULL); //thread_foreach faz um for para percorrer cada thread
 }
+
+void mlfqs_sort_ready_list(void)
+{
+    list_sort(&ready_list, insert_priority, NULL);
+}
+
+/*função para ordenar por ordem de prioridade*/
+bool insert_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
+{
+  struct thread *thread_a = list_entry(a, struct thread, elem); 
+  struct thread *thread_b = list_entry(b, struct thread, elem);
+  
+  if (thread_a->priority == thread_b->priority) 
+  {
+    return false; //manter igual
+  }
+  
+  // Caso contrário, quem tem a maior prioridade vem na frente
+  return thread_a->priority > thread_b->priority;
+}
+
+
+
 /* Idle thread.  Executes when no other thread is ready to run.
 
    The idle thread is initially put on the ready list by

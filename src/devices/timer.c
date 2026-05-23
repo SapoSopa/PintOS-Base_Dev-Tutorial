@@ -179,9 +179,11 @@ timer_interrupt (struct intr_frame *args UNUSED)
       mlfqs_recalc_load_avg();
       mlfqs_recalc_all_recent_cpu();
       thread_foreach(mlfqs_recalc_priority, NULL);
+      mlfqs_sort_ready_list();
     }
     if (ticks%4==0){
       thread_foreach(mlfqs_recalc_priority, NULL);
+      mlfqs_sort_ready_list();
       intr_yield_on_return(); /*fazer reordenação de threads de acordo com a prioridade atualizada*/
     }
   }
