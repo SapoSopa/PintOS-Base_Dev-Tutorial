@@ -173,20 +173,6 @@ timer_interrupt (struct intr_frame *args UNUSED)
   ticks++;
   thread_tick ();
   thread_wake_up(timer_ticks());
-  if (thread_mlfqs){
-    mlfqs_increment_recent_cpu();
-    if (ticks%TIMER_FREQ == 0){
-      mlfqs_recalc_load_avg();
-      mlfqs_recalc_all_recent_cpu();
-      thread_foreach(mlfqs_recalc_priority, NULL);
-      mlfqs_sort_ready_list();
-    }
-    if (ticks%4==0){
-      thread_foreach(mlfqs_recalc_priority, NULL);
-      mlfqs_sort_ready_list();
-      intr_yield_on_return(); /*fazer reordenação de threads de acordo com a prioridade atualizada*/
-    }
-  }
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

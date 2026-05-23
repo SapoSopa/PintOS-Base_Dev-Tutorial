@@ -11,6 +11,7 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "devices/timer.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -80,6 +81,41 @@ static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
+
+/*função que compara a prioridade das threads*/
+bool thread_compare_priority (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
+{
+  struct thread *thread_a = list_entry (a, struct thread, elem);
+  struct thread *thread_b = list_entry (b, struct thread, elem);
+
+  return thread_a->priority > thread_b->priority;
+}
+
+/*função que checa se é nececessário mudar a thread atual baseado na prioridade*/
+void thread_mlfqs_yield(void)
+{
+  enum intr_level old_level = intr_disable (); //disabilida interrupções para usar a lista
+  if (!list_empty(&ready_list))
+    {
+      struct thread *highest = list_entry(list_front(&ready_list), struct thread, elem);
+      if (thread_current()->priority < highest->priority)
+        {
+          if (intr_context ()) 
+            {
+              intr_set_level(old_level); 
+              intr_yield_on_return ();
+              return;
+            }
+          else 
+            {
+              intr_set_level(old_level); 
+              thread_yield ();
+              return;
+          }
+        }
+    }
+  intr_set_level(old_level); 
+}
 
 
 bool wake_up_order(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
@@ -208,6 +244,23 @@ thread_tick (void)
   else
     kernel_ticks++;
 
+    if (thread_mlfqs){
+    
+    if (t != idle_thread) mlfqs_increment_recent_cpu();
+    
+    int64_t ticks = timer_ticks ();
+
+    if (ticks%TIMER_FREQ == 0){
+      mlfqs_recalc_load_avg();
+      mlfqs_recalc_all_recent_cpu();
+    }
+    if (ticks%4==0){
+      thread_foreach(mlfqs_recalc_priority, NULL);
+      list_sort (&ready_list, thread_compare_priority, NULL);
+      thread_mlfqs_yield(); /*fazer reordenação de threads de acordo com a prioridade atualizada*/
+    }
+  }
+
   /* Enforce preemption. */
   if (++thread_ticks >= TIME_SLICE)
     intr_yield_on_return ();
@@ -315,8 +368,7 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  //list_push_back (&ready_list, &t->elem);
-  list_insert_ordered(&ready_list, &t->elem, insert_priority, NULL);
+  list_insert_ordered (&ready_list, &t->elem, thread_compare_priority, NULL); //mudança para adicionar o elemento na lista já ordenado
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -387,8 +439,7 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    //list_push_back (&ready_list, &cur->elem);
-    list_insert_ordered(&ready_list, &cur->elem, insert_priority, NULL);
+    list_insert_ordered (&ready_list, &cur->elem, thread_compare_priority, NULL); //mudança para adicionar o elemento na lista já ordenado
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -430,7 +481,9 @@ void
 thread_set_nice (int nice) 
 { 
   thread_current()->nice = nice;  /*seta a thread atual e atualiza o nice*/
+  /*refaz a ordem após atualizar o nice*/
   mlfqs_recalc_priority(thread_current(), NULL);
+  thread_mlfqs_yield(); 
 }
 
 /* Returns the current thread's nice value. */
@@ -463,11 +516,22 @@ void mlfqs_increment_recent_cpu()
 
 void mlfqs_recalc_priority(struct thread *t, void* aux UNUSED)
 {
-  t->priority = FP_INT(FP_SUB_INT(FP_SUB_INT(INT_FP(PRI_MAX),FP_DIV_INT(t->recent_cpu,4)),((t->nice)*2)));
-  /*manter a prioridade no limite exigido do PintOS*/
+  if (t == idle_thread)
+    return;
+
+  // Formula: priority = PRI_MAX - (recent_cpu / 4) - (nice * 2)
+  fixed_point cpu_div_4 = FP_DIV_INT (t->recent_cpu, 4);
+  fixed_point sub1 = FP_SUB (INT_FP (PRI_MAX), cpu_div_4); 
+  fixed_point sub2 = FP_SUB_INT (sub1, t->nice * 2);  
+  
+  t->priority = FP_INT_ROUND (sub2);
+
+  /* manter a prioridade no limite exigido do PintOS */
   if (t->priority > PRI_MAX) t->priority = PRI_MAX;
   if (t->priority < PRI_MIN) t->priority = PRI_MIN;
 }
+
+
 
 void mlfqs_recalc_load_avg()
 {
