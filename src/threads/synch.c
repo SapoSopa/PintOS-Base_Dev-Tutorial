@@ -233,6 +233,8 @@ lock_release (struct lock *lock)
 
   lock->holder = NULL;
   sema_up (&lock->semaphore);
+
+  if (!intr_context()) thread_yield(); //cede CPU se thread de maior prioridade for desbloqueada
 }
 
 /* Returns true if the current thread holds LOCK, false
