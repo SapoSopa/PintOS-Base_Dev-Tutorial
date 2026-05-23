@@ -1,3 +1,10 @@
+/* 
+   manipular principalmente as interrupções periódicas
+   conta os ticks (variavel global)
+   chama thread_tick a cada interrupcao
+   funcoes de delay (sleep, msleep, etcc)
+*/
+
 #include "devices/timer.h"
 #include <debug.h>
 #include <inttypes.h>
@@ -8,8 +15,6 @@
 #include "threads/synch.h"
 #include "threads/thread.h"
   
-/* See [8254] for hardware details of the 8254 timer chip. */
-
 #if TIMER_FREQ < 19
 #error 8254 timer requires TIMER_FREQ >= 19
 #endif
@@ -17,8 +22,7 @@
 #error TIMER_FREQ <= 1000 recommended
 #endif
 
-/* Number of timer ticks since OS booted. */
-static int64_t ticks;
+static int64_t ticks; //variavel global
 
 /* Number of loops per timer tick.
    Initialized by timer_calibrate(). */
@@ -66,34 +70,42 @@ timer_calibrate (void)
   printf ("%'"PRIu64" loops/s.\n", (uint64_t) loops_per_tick * TIMER_FREQ);
 }
 
-/* Returns the number of timer ticks since the OS booted. */
+/* retorna qnts ticks passarm desde o boot */
 int64_t
 timer_ticks (void) 
 {
-  enum intr_level old_level = intr_disable ();
-  int64_t t = ticks;
-  intr_set_level (old_level);
+  enum intr_level old_level = intr_disable (); //desliga interrupcoes
+  int64_t t = ticks; // lê os ticks
+  intr_set_level (old_level); // retorna as interrupçoes pro estado inicial 
   return t;
 }
 
-/* Returns the number of timer ticks elapsed since THEN, which
-   should be a value once returned by timer_ticks(). */
+/* FUNÇÃO PRA CALCULAR QUANTOS TICKS PASSARAM DESDE UM EVENTO ESPECÍFICO
+   then é o valor de ticks no instante que o evento estava acontecendo, 
+   usando timer_ticks pega o valor do tick atual e retorna a diferença
+   ou seja, quantos ticks se passaram desde que o evento ocorreu */
 int64_t
 timer_elapsed (int64_t then) 
 {
-  return timer_ticks () - then;
+  return timer_ticks () - then; // calcula e retorna a diferença 
 }
 
-/* Sleeps for approximately TICKS timer ticks.  Interrupts must
-   be turned on. */
+/* dorme por tantos TICKS de tempo 
+   incialmente implementado com espera ocupada -> um loop que desperdiçava cpu
+   modificações na implementação: bloquear a thread até o tempo passar
+   checar se o tempo foi atigindo e trocar o estado da thread (blocked pra ready)
+   usar as interrupções pra acordar as threads que já esperaram o tempo suficiente */
 void
 timer_sleep (int64_t ticks) 
 {
-  int64_t start = timer_ticks ();
+  if (ticks <= 0){ //condicao de ticks >0 pra executar a funcao
+    return; 
+  }
+  enum intr_level old_level = intr_disable();
+  int64_t sleep_ticks = (timer_ticks() + ticks); //qntd de ticks que a thread vai ficar dormindo
+  intr_set_level(old_level);
 
-  ASSERT (intr_get_level () == INTR_ON);
-  while (timer_elapsed (start) < ticks) 
-    thread_yield ();
+  thread_sleep(sleep_ticks); //coloca a thread pra dormir
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -166,12 +178,17 @@ timer_print_stats (void)
   printf ("Timer: %"PRId64" ticks\n", timer_ticks ());
 }
 
-/* Timer interrupt handler. */
+/* CPU INTERROMPE A THREAD ATUAL
+    entra no handler de interrupcao 
+    verifica threads dormindo 
+    acordar threads 
+    thread_unblock */
 static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
-  ticks++;
-  thread_tick ();
+  ticks++; //incrementa a variavel global de ticks
+  thread_wake_up(timer_ticks()); // acorda as threads que devem acordar nesse tick
+  thread_tick (); // atualiza (faz yield -> schedule) "chama o schedule"
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
