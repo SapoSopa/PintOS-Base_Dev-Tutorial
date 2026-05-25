@@ -143,4 +143,10 @@ void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
+/* Funções de atualização MLFQS — chamadas pelo timer */
+void thread_mlfqs_increment_cpu (void);
+void thread_mlfqs_update_load_avg (void);
+void thread_mlfqs_update_all_recent_cpu (void);
+void thread_mlfqs_update_all_priority (void);
+
 #endif /* threads/thread.h */

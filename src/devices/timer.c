@@ -210,10 +210,28 @@ timer_print_stats (void)
 
 /* Timer interrupt handler. */
 static void
-timer_interrupt (struct intr_frame *args UNUSED) 
+timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
   thread_tick ();
+
+  /* --- MLFQS: atualizações periódicas --- */
+  if (thread_mlfqs)
+    {
+      /* A cada tick: incrementa recent_cpu da thread em execução */
+      thread_mlfqs_increment_cpu ();
+
+      /* A cada segundo: atualiza load_avg e depois recent_cpu de todas */
+      if (ticks % TIMER_FREQ == 0)
+        {
+          thread_mlfqs_update_load_avg ();
+          thread_mlfqs_update_all_recent_cpu ();
+        }
+
+      /* A cada 4 ticks: recalcula prioridades e reordena a ready_list */
+      if (ticks % 4 == 0)
+        thread_mlfqs_update_all_priority ();
+    }
 
   /* --- VERIFICAÇÃO DA LISTA DE BLOQUEADOS --- */
   struct list_elem *e = list_begin (&sleep_list);
