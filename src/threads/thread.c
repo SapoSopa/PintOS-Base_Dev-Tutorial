@@ -21,6 +21,13 @@
 #define THREAD_MAGIC 0xcd6abf4b
 #define A 55
 
+// Lista de Threads em estado de bloqueio aguardando o alarme
+static struct list sleep_list;
+
+// Guarda o menor wakeup_tick de todas as threadas que estão dormindo:
+static int64_t smaller_wakeup_sleep_list = INT64_MAX; //  smaller_wakeup_sleep_list
+
+
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
@@ -88,6 +95,12 @@ static tid_t allocate_tid (void);
 void
 thread_init (void) 
 {
+
+  list_init (&sleep_list); // inicializar lista de threads block
+  smaller_wakeup_sleep_list = INT64_MAX; // definir um valor maixmo para comparação
+
+
+
   ASSERT (intr_get_level () == INTR_OFF);
 
   lock_init (&tid_lock);
@@ -100,6 +113,114 @@ thread_init (void)
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
 }
+
+
+
+/* Ordena a sleep_list: menor wakeup_tick primeiro. 
+   Em caso de empate no tick, maior prioridade vem primeiro. */
+static bool
+sleep_list_less (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
+{
+
+  // Converte os ganchos da lista para ponteiros completos de struct thread
+  struct thread *ta = list_entry (a, struct thread, sleep_elem);
+  struct thread *tb = list_entry (b, struct thread, sleep_elem);
+
+    // quem acorda mais cedo vem primeiro 
+  if (ta->wakeup_tick != tb->wakeup_tick)
+    return ta->wakeup_tick < tb->wakeup_tick;
+
+  return ta->priority > tb->priority; // se acordarem no mesmo tick, maior prioridade vem primeiro
+}
+
+
+
+
+
+
+
+
+
+
+
+
+/* Coloca a thread atual (RUNNING) em estado de bloqueio (BLOCKED) ate que o tick 
+   absoluto do sistema atinja o valor informado em 'ticks'. Insere a thread na 
+   sleep_list e atualiza o menor tempo global de despertar */
+
+void
+thread_sleep (int64_t ticks) 
+{
+  struct thread *cur = thread_current ();
+  enum intr_level old_level;
+
+  /* Se for a thread ociosa (idle_thread), nao podemos bloqueia-la */
+  if (cur == idle_thread )
+    return;
+
+  old_level = intr_disable (); /* Desabilita interrupcoes */
+
+  cur->wakeup_tick = ticks;
+  list_insert_ordered (&sleep_list, &cur->sleep_elem, sleep_list_less, NULL);
+
+  /* Atualiza o menor tick global para a interrupcao checar rapidamente */
+  update_next_tick_to_awake (cur->wakeup_tick);
+
+  thread_block (); /* Muda estado para THREAD_BLOCKED e chama o schedule() */
+
+  intr_set_level (old_level); /* Restaura interrupcoes ao acordar */
+}
+
+
+
+/* Percorre a sleep_list e acorda (desbloqueia) todas as threads cujo tempo de despertar 
+   (wakeup_tick) seja menor ou igual ao tick atual ('ticks'). Recalcula o valor de 
+   next_tick_to_awake para as threads que continuam dormindo na fila.*/
+void
+thread_awake (int64_t ticks) 
+{
+  smaller_wakeup_sleep_list = INT64_MAX;
+  struct list_elem *e = list_begin (&sleep_list);
+
+  while (e != list_end (&sleep_list)) 
+    {
+      struct thread *t = list_entry (e, struct thread, sleep_elem);
+
+      if (ticks >= t->wakeup_tick) 
+        {
+          e = list_remove (e);
+          thread_unblock (t); /* Muda estado para THREAD_READY e insere na ready_list */
+        } 
+      else 
+        {
+          update_next_tick_to_awake (t->wakeup_tick);
+          e = list_next (e);
+        }
+    }
+}
+
+
+/* Retorna o menor tick de despertar da fila  para usar em timer_interrupt*/
+int64_t 
+get_next_tick_to_awake (void) 
+{
+  return smaller_wakeup_sleep_list;
+}
+
+
+/* Atualiza o next_tick_to_awake se o tick passado for menor 
+pega sempre o menor wake up*/
+void 
+update_next_tick_to_awake (int64_t ticks) 
+{
+  if (smaller_wakeup_sleep_list > ticks)
+    smaller_wakeup_sleep_list = ticks;
+}
+
+
+
+
+
 
 /* Starts preemptive thread scheduling by enabling interrupts.
    Also creates the idle thread. */

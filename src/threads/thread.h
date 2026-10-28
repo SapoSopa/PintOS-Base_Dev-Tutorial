@@ -93,6 +93,16 @@ struct thread
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
+
+  // CAMPOS PARA O ALARM CLOCK:
+        
+  int64_t wakeup_tick;                /* Tick absoluto em que deve acordar(tempo futuro) */
+  struct list_elem sleep_elem;        /* Elemento para conectar na sleep_list */
+
+
+
+
+
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
@@ -106,6 +116,15 @@ struct thread
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 extern bool thread_mlfqs;
+
+
+// FUNÇÕES PARA O ALARM CLOCK
+void thread_sleep (int64_t ticks); // colocar a thread atual para dormir(estado de bloqueado)
+void thread_awake (int64_t ticks); // chama a interruppcao do temporizador para despertar as threads 'qualificadas'
+void update_next_tick_to_awake (int64_t ticks); // atualizar para pegar sempre o menor wakeup
+int64_t get_next_tick_to_awake (void); // retorna o menot tick para o timer interrupt
+
+
 
 void thread_init (void);
 void thread_start (void);
