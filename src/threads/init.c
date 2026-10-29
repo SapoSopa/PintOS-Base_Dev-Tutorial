@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <inttypes.h>
 #include "devices/kbd.h"
 #include "devices/input.h"
 #include "devices/serial.h"
@@ -131,6 +132,7 @@ main (void)
   
   /* Run actions specified on kernel command line. */
   run_actions (argv);
+  //run_custom_alarm_test();
 
   /* Finish up. */
   shutdown ();
@@ -343,6 +345,8 @@ run_actions (char **argv)
   
 }
 
+
+
 /* Prints a kernel command line help message and powers off the
    machine. */
 static void
@@ -427,3 +431,49 @@ locate_block_device (enum block_type role, const char *name)
     }
 }
 #endif
+
+/* Função executada por cada thread de teste */
+static void
+sleep_test_worker (void *aux)
+{
+  int64_t sleep_ticks = *(int64_t *) aux;
+  int64_t start_tick = timer_ticks ();
+
+  printf ("[%s] Iniciou sleep de %"PRId64" ticks no tick %"PRId64"\n",
+          thread_name (), sleep_ticks, start_tick);
+
+  timer_sleep (sleep_ticks);
+
+  int64_t end_tick = timer_ticks ();
+  int64_t elapsed = end_tick - start_tick;
+
+  printf ("[%s] Acordou no tick %"PRId64" (durou: %"PRId64" ticks)\n",
+          thread_name (), end_tick, elapsed);
+}
+
+/* Função principal de teste */
+void
+run_custom_alarm_test (void)
+{
+  static int64_t delay_long = 100;
+  static int64_t delay_short = 30;
+  static int64_t delay_zero = 0;
+  static int64_t delay_neg = -10;
+
+  printf ("\n=== INICIANDO TESTE DO ALARM CLOCK ===\n");
+
+  /* Teste 1: Casos limite (zero e negativo devem retornar imediatamente) */
+  printf ("Testando ticks <= 0...\n");
+  timer_sleep (delay_zero);
+  timer_sleep (delay_neg);
+  printf ("OK: Ticks <= 0 nao bloquearam a thread.\n");
+
+  /* Teste 2: Ordem de despertar (a thread de 30 ticks DEVE acordar antes da de 100 ticks) */
+  printf ("Criando threads com tempos diferentes...\n");
+  thread_create ("Thread_Longa", PRI_DEFAULT, sleep_test_worker, &delay_long);
+  thread_create ("Thread_Curta", PRI_DEFAULT, sleep_test_worker, &delay_short);
+
+  /* Da tempo para que as threads processem */
+  timer_sleep (150);
+  printf ("=== TESTE CONCLUIDO ===\n\n");
+}

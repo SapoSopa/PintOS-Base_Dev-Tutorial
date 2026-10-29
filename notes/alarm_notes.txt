@@ -1,0 +1,21 @@
+a estrutura básica do alarme clock, no inicio, está no modelo de espera ocupada - uma função chamando indefinidamente
+em um ciclo shile true. Precisamos modificar para introduzirmos o estado de bloquado da thread.
+
+THREAD:
+Create -> Ready -> Running -> Die (exit)
+            |          |
+            | ______Bloqueado
+
+No busy wait, ela fica indefinidamente no estado de running, consumindo a cpu
+
+para passarmos ao estado de bloquado, precisamos:
+1. Modificar a lista do estado de processos em Running 
+2. criar uma nova lista para o estado de processos em Bloquado
+
+Cada estrutura de Dados usada deverá ser definida e inicializada (Listas, funções...)
+
+Devemos criar uma variável global que caracteriza o "quantum" (slice de tempo) do sistema, 
+um Global Tick. Essa será a mínima fatia de tempo do sistema, pela qual conseguiremos fazer
+a verificação na lista de processos bloquados
+
+Os estados de thread ja foram implementados. Apenas precisamos modificar onde que estão sendo chamados
